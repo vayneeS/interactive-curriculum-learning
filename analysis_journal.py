@@ -141,8 +141,6 @@ def compute_metric_retention_transfer(metric='jerk'):
                         results[metric].append(np.mean(metric_vals))
     return results
 
-
-
 def hist_participant(data):
     fig, ax = plt.subplots(6,int(len(data.keys())/6),figsize=(15,15))
 
@@ -165,27 +163,92 @@ def hist_participant(data):
         fig.tight_layout()
     plt.show()
 
-def task_distribution_condition():
+def task_distribution_condition(data):
     fig, ax = plt.subplots(3,figsize=(5,10))
-    res = {'algo': [], 'width': []}
-
+    res = {'algo': [], 'width': [],'participant':[]}
     for k in data.keys():
         for b in data[k]['width'].keys():
+            res['participant'].append(k)
             res['algo'].append(data[k]['algo'])
-            res['width'].append(data[k]['width'][b][0])
+            width = data[k]['width'][b][0]
+            res['width'].append(width)
             
-    df = pd.DataFrame(res)
-    algos=["choilike","mabuni","scheduled"]
-    c=0
-    for i in range(len(algos)):
-        
-        sns.histplot(data=df[df['algo']==algos[i]],x='width',bins=7, ax = ax[c])
-        ax[c].title.set_text(algos[i])
-
-        c+=1
+    df_width = pd.DataFrame(res)
+    df2 = df_width.groupby(['algo','width','participant']).agg({'width':'size'}).rename(columns={'width':'count'})
+    df3=df2.groupby(['algo','width']).agg({'count':'mean'}).reset_index()
+    for i in range(len(sel_conditions)):
+        sns.barplot(data=df3[df3['algo']==sel_conditions[i]],x='width',y='count',ax=ax[i])
     fig.tight_layout()
     plt.show()
 
+def plot_pre_post_mt(data):
+    fig, ax = plt.subplots(3,figsize=(5,10))
+
+    r=0
+    c=0
+    dic_len_xy = {'algo' : [],'len_xy' : [],'block' : []}
+
+    for k in data.keys():
+
+        xy_block = []
+        for i in data[k]['data'].keys():
+            xy_trial = 0
+            for t in data[k]['data'][i].keys():
+                xy_trial+=len(data[k]['data'][i][t])
+            xy_block.append(xy_trial/len(data[k]['data'][i].keys()))
+            dic_len_xy['block'].append(i)
+        dic_len_xy['algo'].extend(len(xy_block)*[data[k]['algo']])
+        dic_len_xy['len_xy'].extend(xy_block)
+
+    df_len_xy = pd.DataFrame(dic_len_xy)
+    df2 = df_len_xy.groupby(['algo','block']).agg({'len_xy':'mean'}).reset_index()
+    df2
+    for i in range(len(sel_conditions)):
+        sns.barplot(data=df2[df2['algo']==sel_conditions[i]],x='block',y='len_xy',ax=ax[i])
+        ax[i].title.set_text(sel_conditions[i])
+    fig.tight_layout()
+
+def plot_ret_trans_mt(data,phase):
+    sel_conditions = ['mabuni', 'scheduled', 'choilike']
+
+    fig, ax = plt.subplots(3,figsize=(5,5))
+
+    r=0
+    c=0
+    dic_len_xy = {'algo' : [],'len_xy' : [],'block' : [], 'phase' : []}
+
+    for p_id in data.keys():
+        xy_block = []
+        if data[p_id]['algo'] in sel_conditions:
+            for du in data[p_id]['data'].keys():
+                for di in data[p_id]['data'][du].keys():
+                    for b in data[p_id]['data'][du][di].keys():
+                        
+                        xy_trial = 0
+                        for t in data[p_id]['data'][du][di][b].keys():
+                            xy_trial+=len(data[p_id]['data'][du][di][b][t])
+                        xy_block.append(xy_trial/len(data[p_id]['data'][du][di].keys()))
+                        dic_len_xy['block'].append(b)
+                        dic_len_xy['phase'].append('{}-{}'.format(du,di))
+            dic_len_xy['algo'].extend(len(xy_block)*[data[p_id]['algo']])
+            dic_len_xy['len_xy'].extend(xy_block)
+
+    df_len_xy = pd.DataFrame(dic_len_xy)
+    if phase == "retention":
+        df_new = df_len_xy[df_len_xy['phase'] == '1.0-800']
+        df2 = df_new.groupby(['algo','block']).agg({'len_xy':'mean'}).reset_index()
+        for i in range(len(sel_conditions)):
+            sns.barplot(data=df2[df2['algo']==sel_conditions[i]],x='block',y='len_xy',ax=ax[i])
+            ax[i].title.set_text(sel_conditions[i])
+        fig.tight_layout()
+    else:
+        df_new = df_len_xy[df_len_xy['phase'] != '1.0-800']
+        df2 = df_new.groupby(['algo','phase']).agg({'len_xy':'mean'}).reset_index()
+        for i in range(len(sel_conditions)):
+            sns.barplot(data=df2[df2['algo']==sel_conditions[i]],x='phase',y='len_xy',ax=ax[i])
+            ax[i].title.set_text(sel_conditions[i])
+        fig.tight_layout()
+    
 #------------------#############################################-------------------------#
 # results_icf = compute_icf()
 # df_icf=pd.DataFrame(results_icf)
@@ -195,19 +258,28 @@ def task_distribution_condition():
 
 metric = 'jerk'
 
-data = pickle.load(open('training_width.pkl', 'rb'))
-hist_participant(data)
+#data_training = pickle.load(open('training_width.pkl', 'rb'))
+#hist_participant(data_training)
 
-results_ret_transf = compute_metric_retention_transfer(metric=metric)
-df_ret_transf = pd.DataFrame(results_ret_transf)
+# results_ret_transf = compute_metric_retention_transfer(metric=metric)
+# df_ret_transf = pd.DataFrame(results_ret_transf)
 
-results_pre_post = compute_metric_pre_post(metric=metric)
-df_pre_post = pd.DataFrame(results_pre_post)
+# results_pre_post = compute_metric_pre_post(metric=metric)
+# df_pre_post = pd.DataFrame(results_pre_post)
 
 
-df_new = df_ret_transf[df_ret_transf['phase'] == '1.0-800']
-df_new['phase'] = 'retention'
+# df_new = df_ret_transf[df_ret_transf['phase'] == '1.0-800']
+# df_new['phase'] = 'retention'
 
-df_pre_post_ret = pd.concat([df_pre_post, df_new], axis=0)
+# df_pre_post_ret = pd.concat([df_pre_post, df_new], axis=0)
 
-print(ttest_ind(df_pre_post_ret[df_pre_post_ret['phase'] == 'pretest'][metric],df_pre_post_ret[df_pre_post_ret['phase'] == 'retention'][metric]))
+# print(ttest_ind(df_pre_post_ret[df_pre_post_ret['phase'] == 'pretest'][metric],df_pre_post_ret[df_pre_post_ret['phase'] == 'retention'][metric]))
+
+data_ret_trans = pickle.load(open('retention_transfer_xy.pkl', 'rb'))
+data_posttest = pickle.load(open('posttest.pkl', 'rb'))
+data_pretest = pickle.load(open('pretest.pkl', 'rb'))
+
+plot_ret_trans_mt(data_ret_trans,"transfer")
+plot_ret_trans_mt(data_ret_trans,"retention")
+plot_pre_post_mt(data_posttest)
+plot_pre_post_mt(data_posttest)
