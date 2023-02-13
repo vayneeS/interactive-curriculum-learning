@@ -114,33 +114,33 @@ def performance(pickle_folder='./',
                     # results[met].append(metric_vals[met][-1])
                     results[met].append(np.mean(metric_vals[met]))
 
-    # # remove outliers (above 3 * std)
-    # levels = [[n for n in np.unique(results[f])] for f in ['phase', 'schedule']]
-    # results_per_metrics = {}
-    # for met in metric_vals.keys():
-    #     results_per_metrics[met] = {'phase': [], 'schedule': [], '{}'.format(met): []}
-    #     for l1 in levels[0]:
-    #         for l2 in levels[1]:
-    #             idx1 = np.where(np.array(results['phase']) == l1)[0]
-    #             idx2 = np.where(np.array(results['schedule']) == l2)[0]
-    #             idx = list(set(idx1) & set(idx2))
-    #             sel_data = np.array(results[met])[idx] 
-    #             mean_distrib = np.mean(np.array(results[met])[idx])
-    #             outlier_thresh = mean_distrib + 3 * np.std(np.array(results[met])[idx])
-    #             idx_noo = np.where(sel_data < outlier_thresh)[0]
-    #             for i in idx_noo:
-    #                 results_per_metrics[met]['phase'].append(l1)
-    #                 results_per_metrics[met]['schedule'].append(l2)
-    #                 results_per_metrics[met][met].append(sel_data[i])
-    
+    # remove outliers (above 3 * std)
+    levels = [[n for n in np.unique(results[f])] for f in ['phase', 'schedule']]
     results_per_metrics = {}
     for met in metric_vals.keys():
         results_per_metrics[met] = {'phase': [], 'schedule': [], '{}'.format(met): []}
-        idx = np.arange(len(results['phase']))
-        for i in idx:
-            results_per_metrics[met]['phase'].append(results['phase'][i])
-            results_per_metrics[met]['schedule'].append(results['schedule'][i])
-            results_per_metrics[met][met].append(results[met][i])
+        for l1 in levels[0]:
+            for l2 in levels[1]:
+                idx1 = np.where(np.array(results['phase']) == l1)[0]
+                idx2 = np.where(np.array(results['schedule']) == l2)[0]
+                idx = list(set(idx1) & set(idx2))
+                sel_data = np.array(results[met])[idx] 
+                mean_distrib = np.mean(np.array(results[met])[idx])
+                outlier_thresh = mean_distrib + 3 * np.std(np.array(results[met])[idx])
+                idx_noo = np.where(sel_data < outlier_thresh)[0]
+                for i in idx_noo:
+                    results_per_metrics[met]['phase'].append(l1)
+                    results_per_metrics[met]['schedule'].append(l2)
+                    results_per_metrics[met][met].append(sel_data[i])
+    
+    # results_per_metrics = {}
+    # for met in metric_vals.keys():
+    #     results_per_metrics[met] = {'phase': [], 'schedule': [], '{}'.format(met): []}
+    #     idx = np.arange(len(results['phase']))
+    #     for i in idx:
+    #         results_per_metrics[met]['phase'].append(results['phase'][i])
+    #         results_per_metrics[met]['schedule'].append(results['schedule'][i])
+    #         results_per_metrics[met][met].append(results[met][i])
 
     if save:
         pickle.dump(results, open('results_per_metrics.pkl', 'wb'))
