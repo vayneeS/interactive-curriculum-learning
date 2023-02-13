@@ -13,7 +13,9 @@ import seaborn as sns
 import pandas as pd
 import matplotlib.pylab as plt
 from scipy.stats import ttest_ind
+from manuals import get_manual_cuts
 
+manual_cuts = get_manual_cuts()
 
 def icf(data, width=18, diameter=400):
     data_ = np.sqrt(np.sum(np.power(data - [500, 500], 2), 1))
@@ -32,7 +34,7 @@ def jerk(data):
     
 
 def performance(pickle_folder='./',
-                phases=['pretest', 'posttest'],
+                phases=['D1 1.0s 800px (Pre)', 'D1 1.0s 800px (Post)'],
                 metrics=['icf', 'jerk', 'mvt_time'],
                 bounds=[0., 1.],
                 save=False):
@@ -41,9 +43,46 @@ def performance(pickle_folder='./',
     for m in metrics:
         results[m] = []
 
+    data_pre = pickle.load(open(os.path.join(pickle_folder, 'pretest_xy.pkl'), 'rb'))
+    data_post = pickle.load(open(os.path.join(pickle_folder, 'posttest_xy.pkl'), 'rb'))
+    data_rettrasnf = pickle.load(open(os.path.join(pickle_folder, 'retention_transfer_xy.pkl'), 'rb'))
+
+    # phases = ['D1 1.0s 800px (Pre)', 
+    #             'D1 1.0s 800px (Post)', 
+    #             'D2 1.0s 800px (Ret)', 
+    #             'D2 1.0s 600px (Tsf)', 
+    #             'D2 1.0s 400px (Tsf)', 
+    #             'D2 0.7s 800px (Tsf)',
+    #             'D2 0.7s 600px (Tsf)',
+    #             'D2 0.7s 400px (Tsf)']
+    
+    all_data = {}
+    all_data['D1-1.0-800-Pre'] = data_pre
+    all_data['D1-1.0-800-Post'] = data_post
+    for mt in [0.7, 1.0]:
+        for dm in [800, 600, 400]:
+            dat = {}
+            for p_id in data_rettrasnf.keys():
+                dat[p_id] = {'algo': data_rettrasnf[p_id]['algo'], 'data': {}}
+                bid = 0
+                for b in data_rettrasnf[p_id]['data'][mt][dm].keys():
+                    dat[p_id]['data'][bid] = {}
+                    for t in data_rettrasnf[p_id]['data'][mt][dm][b].keys():
+                        dat[p_id]['data'][bid][t] = data_rettrasnf[p_id]['data'][mt][dm][b][t]
+                    bid += 1
+            if mt == 1.0 and dm == 800:
+                all_data['D2-{}-{}-Ret'.format(mt, dm)] = dat
+            else:
+                all_data['D2-{}-{}-Tsf'.format(mt, dm)] = dat
+                # print('D2 {}s {}px (Tsf)'.format(mt, dm))
+                # print(mt, dm, all_data['D2 {}s {}px (Tsf)'.format(mt, dm)])
+
+    print(all_data.keys())
+
     # get data and compute metrics
     for k in phases: 
-        data_ = pickle.load(open(os.path.join(pickle_folder, '{}_xy.pkl'.format(k)), 'rb'))
+        # data_ = pickle.load(open(os.path.join(pickle_folder, '{}_xy.pkl'.format(k)), 'rb'))
+        data_ = all_data[k]
         # loop on participants
         for p_id in data_.keys():
             # loop on blocks
@@ -53,40 +92,55 @@ def performance(pickle_folder='./',
                     metric_vals[m] = []
                 # loop on trials
                 for t in data_[p_id]['data'][b].keys():
-                    if '{}_{}_{}_{}'.format(k, p_id, b, t) != 'pretest_P1-MAB_1_1':
+                    if '{}_{}_{}_{}'.format(k, p_id, b, t) != 'D1-1.0-800-Pre_P1-MAB_1_1':
                         xy = data_[p_id]['data'][b][t]
                         b1 = int(bounds[0] * len(xy))
+                        # if '{}_{}_{}_{}'.format(k, p_id, b, t) in manual_cuts.keys():
+                        #     b2 = manual_cuts['{}_{}_{}_{}'.format(k, p_id, b, t)]
+                        # else:
                         b2 = int(bounds[1] * len(xy))
                         xy = xy[b1:b2, :]
                         if 'jerk' in metrics:
-                            metric_vals['jerk'].append(jerk(xy))
+                            if jerk(xy) < 1200:
+                                metric_vals['jerk'].append(jerk(xy))
                         if 'icf' in metrics:
-                            metric_vals['icf'].append(icf(xy, width=18, diameter=400))
+                            diam = int(k.split('-')[-2]) / 2
+                            metric_vals['icf'].append(icf(xy, width=18, diameter=diam))
                         if 'mvt_time' in metrics:
                             metric_vals['mvt_time'].append(len(xy) / 200.0)
-                        results['phase'].append(k)
-                        results['schedule'].append(data_[p_id]['algo'])  
-                        for met in metric_vals.keys():
-                            results[met].append(metric_vals[met][-1])
+                results['phase'].append(k)
+                results['schedule'].append(data_[p_id]['algo'])  
+                for met in metric_vals.keys():
+                    # results[met].append(metric_vals[met][-1])
+                    results[met].append(np.mean(metric_vals[met]))
 
-    # remove outliers (above 3 * std)
-    levels = [[n for n in np.unique(results[f])] for f in ['phase', 'schedule']]
+    # # remove outliers (above 3 * std)
+    # levels = [[n for n in np.unique(results[f])] for f in ['phase', 'schedule']]
+    # results_per_metrics = {}
+    # for met in metric_vals.keys():
+    #     results_per_metrics[met] = {'phase': [], 'schedule': [], '{}'.format(met): []}
+    #     for l1 in levels[0]:
+    #         for l2 in levels[1]:
+    #             idx1 = np.where(np.array(results['phase']) == l1)[0]
+    #             idx2 = np.where(np.array(results['schedule']) == l2)[0]
+    #             idx = list(set(idx1) & set(idx2))
+    #             sel_data = np.array(results[met])[idx] 
+    #             mean_distrib = np.mean(np.array(results[met])[idx])
+    #             outlier_thresh = mean_distrib + 3 * np.std(np.array(results[met])[idx])
+    #             idx_noo = np.where(sel_data < outlier_thresh)[0]
+    #             for i in idx_noo:
+    #                 results_per_metrics[met]['phase'].append(l1)
+    #                 results_per_metrics[met]['schedule'].append(l2)
+    #                 results_per_metrics[met][met].append(sel_data[i])
+    
     results_per_metrics = {}
     for met in metric_vals.keys():
         results_per_metrics[met] = {'phase': [], 'schedule': [], '{}'.format(met): []}
-        for l1 in levels[0]:
-            for l2 in levels[1]:
-                idx1 = np.where(np.array(results['phase']) == l1)[0]
-                idx2 = np.where(np.array(results['schedule']) == l2)[0]
-                idx = list(set(idx1) & set(idx2))
-                sel_data = np.array(results[met])[idx] 
-                mean_distrib = np.mean(np.array(results[met])[idx])
-                outlier_thresh = mean_distrib + 3 * np.std(np.array(results[met])[idx])
-                idx_noo = np.where(sel_data < outlier_thresh)[0]
-                for i in idx_noo:
-                    results_per_metrics[met]['phase'].append(l1)
-                    results_per_metrics[met]['schedule'].append(l2)
-                    results_per_metrics[met][met].append(sel_data[i])
+        idx = np.arange(len(results['phase']))
+        for i in idx:
+            results_per_metrics[met]['phase'].append(results['phase'][i])
+            results_per_metrics[met]['schedule'].append(results['schedule'][i])
+            results_per_metrics[met][met].append(results[met][i])
 
     if save:
         pickle.dump(results, open('results_per_metrics.pkl', 'wb'))
