@@ -10,6 +10,9 @@ import matplotlib.pylab as plt
 
 import statsmodels.api as sm
 from statsmodels.formula.api import ols
+from scipy.stats import pearsonr
+from statsmodels.stats.multicomp import pairwise_tukeyhsd
+
 
 sel_conditions = ['mabuni', 'scheduled', 'choilike']
 
@@ -26,7 +29,7 @@ def compute_metric_pre_post(metric='jerk'):
     results = {'phase': [], 'schedule': [], metric: []}
     bound_min = 5
     bound_max = 95
-    for k in ['pretest', 'posttest']:
+    for k in ['pretest','posttest']:
         data_ = pickle.load(open('{}.pkl'.format(k), 'rb'))
         for p_id in data_.keys():
             if data_[p_id]['algo'] in sel_conditions:
@@ -163,29 +166,32 @@ def hist_participant(data):
         fig.tight_layout()
     plt.show()
 
-def task_distribution_condition(data):
-    fig, ax = plt.subplots(3,figsize=(5,10))
-    res = {'algo': [], 'width': [],'participant':[]}
+def plot_mean_hist(data):
+    #res = {'algo': [], 'width': [],'participant':[]}
+    res = {'width': [],'participant':[]}
     for k in data.keys():
-        for b in data[k]['width'].keys():
-            res['participant'].append(k)
-            res['algo'].append(data[k]['algo'])
-            width = data[k]['width'][b][0]
-            res['width'].append(width)
-            
+        if("MAB" in k):
+            for b in data[k]['width'].keys():
+                res['participant'].append(k)
+                #res['algo'].append(data[k]['algo'])
+                width = data[k]['width'][b][0]
+                res['width'].append(width)
+
     df_width = pd.DataFrame(res)
-    df2 = df_width.groupby(['algo','width','participant']).agg({'width':'size'}).rename(columns={'width':'count'})
-    df3=df2.groupby(['algo','width']).agg({'count':'mean'}).reset_index()
-    for i in range(len(sel_conditions)):
-        sns.barplot(data=df3[df3['algo']==sel_conditions[i]],x='width',y='count',ax=ax[i])
-    fig.tight_layout()
+    #df2 = df_width.groupby(['algo','width','participant']).agg({'width':'size'}).rename(columns={'width':'count'})
+    df2 = df_width.groupby(['width','participant']).agg({'width':'size'}).rename(columns={'width':'count'})
+    df2=df2.reset_index()
+    
+    model = ols('count ~ C(width)', data=df2).fit()
+    anova_table = sm.stats.anova_lm(model, typ=2)
+    print(anova_table)
+    #print(df2)
+    sns.boxplot(data=df2,x=df2['width'],y=df2['count']).set_title("mean task distribution")
+    sns.stripplot(data=df2,x=df2['width'],y=df2['count'],dodge=True)
     plt.show()
 
-def plot_pre_post_mt(data):
-    fig, ax = plt.subplots(3,figsize=(5,10))
+def plot_mt(data,phase):
 
-    r=0
-    c=0
     dic_len_xy = {'algo' : [],'len_xy' : [],'block' : []}
 
     for k in data.keys():
@@ -201,54 +207,47 @@ def plot_pre_post_mt(data):
         dic_len_xy['len_xy'].extend(xy_block)
 
     df_len_xy = pd.DataFrame(dic_len_xy)
-    df2 = df_len_xy.groupby(['algo','block']).agg({'len_xy':'mean'}).reset_index()
-    df2
-    for i in range(len(sel_conditions)):
-        sns.barplot(data=df2[df2['algo']==sel_conditions[i]],x='block',y='len_xy',ax=ax[i])
-        ax[i].title.set_text(sel_conditions[i])
-    fig.tight_layout()
+    
+    sns.boxplot(data=df_len_xy,x='block',y='len_xy',hue='algo').set_title(phase)
+    sns.stripplot(data=df_len_xy,x='block',y='len_xy',hue='algo',dodge=True)
+    plt.show()
 
-def plot_ret_trans_mt(data,phase):
-    sel_conditions = ['mabuni', 'scheduled', 'choilike']
+def plot_mt_ret_trans(data_ret_trans,phase):
 
-    fig, ax = plt.subplots(3,figsize=(5,5))
-
-    r=0
-    c=0
     dic_len_xy = {'algo' : [],'len_xy' : [],'block' : [], 'phase' : []}
-
-    for p_id in data.keys():
+       
+    for p_id in data_ret_trans.keys():
         xy_block = []
-        if data[p_id]['algo'] in sel_conditions:
-            for du in data[p_id]['data'].keys():
-                for di in data[p_id]['data'][du].keys():
-                    for b in data[p_id]['data'][du][di].keys():
+        if data_ret_trans[p_id]['algo'] in sel_conditions:
+            for du in data_ret_trans[p_id]['data'].keys():
+                for di in data_ret_trans[p_id]['data'][du].keys():
+                    for b in data_ret_trans[p_id]['data'][du][di].keys():
                         
                         xy_trial = 0
-                        for t in data[p_id]['data'][du][di][b].keys():
-                            xy_trial+=len(data[p_id]['data'][du][di][b][t])
-                        xy_block.append(xy_trial/len(data[p_id]['data'][du][di].keys()))
+                        for t in data_ret_trans[p_id]['data'][du][di][b].keys():
+                            xy_trial+=len(data_ret_trans[p_id]['data'][du][di][b][t])
+                        xy_block.append(xy_trial/len(data_ret_trans[p_id]['data'][du][di].keys()))
                         dic_len_xy['block'].append(b)
                         dic_len_xy['phase'].append('{}-{}'.format(du,di))
-            dic_len_xy['algo'].extend(len(xy_block)*[data[p_id]['algo']])
+            dic_len_xy['algo'].extend(len(xy_block)*[data_ret_trans[p_id]['algo']])
             dic_len_xy['len_xy'].extend(xy_block)
 
     df_len_xy = pd.DataFrame(dic_len_xy)
     if phase == "retention":
         df_new = df_len_xy[df_len_xy['phase'] == '1.0-800']
-        df2 = df_new.groupby(['algo','block']).agg({'len_xy':'mean'}).reset_index()
-        for i in range(len(sel_conditions)):
-            sns.barplot(data=df2[df2['algo']==sel_conditions[i]],x='block',y='len_xy',ax=ax[i])
-            ax[i].title.set_text(sel_conditions[i])
-        fig.tight_layout()
+        sns.boxplot(data=df_new,x='block',y='len_xy',hue='algo').set_title(phase)
+        sns.stripplot(data=df_new,x='block',y='len_xy',hue='algo',dodge=True)
+        
     else:
         df_new = df_len_xy[df_len_xy['phase'] != '1.0-800']
-        df2 = df_new.groupby(['algo','phase']).agg({'len_xy':'mean'}).reset_index()
-        for i in range(len(sel_conditions)):
-            sns.barplot(data=df2[df2['algo']==sel_conditions[i]],x='phase',y='len_xy',ax=ax[i])
-            ax[i].title.set_text(sel_conditions[i])
-        fig.tight_layout()
+        sns.boxplot(data=df_new,x='phase',y='len_xy',hue='algo').set_title(phase)
+        sns.stripplot(data=df_new,x='phase',y='len_xy',hue='algo',dodge=True)
+    plt.show()
     
+def plot_icf_jerk(data1,data2):
+    sns.scatterplot(x=data1,y=data2)
+    plt.show()
+
 #------------------#############################################-------------------------#
 # results_icf = compute_icf()
 # df_icf=pd.DataFrame(results_icf)
@@ -256,30 +255,60 @@ def plot_ret_trans_mt(data,phase):
 # fig, ax = plt.subplots(figsize=(13,7))
 # ax = sns.scatterplot(data=df_lp_icf,x="Block",y="Learning_Progress",hue="Width",style="Schedule")
 
-metric = 'jerk'
+# metric = 'jerk'
+metric = 'icf'
 
-#data_training = pickle.load(open('training_width.pkl', 'rb'))
+data_training = pickle.load(open('training_width.pkl', 'rb'))
 #hist_participant(data_training)
 
-# results_ret_transf = compute_metric_retention_transfer(metric=metric)
-# df_ret_transf = pd.DataFrame(results_ret_transf)
+results_pre_post = compute_metric_pre_post(metric)
+df_pre_post = pd.DataFrame(results_pre_post)
+# df_pre = df_pre_post.loc[df_pre_post['phase'] == "pretest"]
+# df_post = df_pre_post.loc[df_pre_post['phase'] == "posttest"]
 
-# results_pre_post = compute_metric_pre_post(metric=metric)
-# df_pre_post = pd.DataFrame(results_pre_post)
+results_ret_transf = compute_metric_retention_transfer(metric=metric)
+df_ret_transf = pd.DataFrame(results_ret_transf)
+
+df_ret = df_ret_transf.loc[df_ret_transf['phase'] == '1.0-800']
+df_ret['phase'] = 'retention'
+
+df_all = pd.concat([df_pre_post,df_ret], axis=0)
+for phase in (df_ret_transf['phase'].unique()):
+    if(phase != '1.0-800'):
+        print(phase)
+        df_trans = df_ret_transf.loc[df_ret_transf['phase'] == phase]
+        df_all = pd.concat([df_all,df_trans], axis=0)
+
+# print(df_all)    
+# plt.figure(figsize=(8,5))
+# sns.boxplot(x="phase", y=metric, hue="schedule", data=df_all, palette="Blues")
+#plt.show()
+
+model = ols('{} ~ C(phase) + C(schedule) + C(phase):C(schedule)'.format(metric), data=df_all).fit()
+anova_table = sm.stats.anova_lm(model, typ=2)
+# print(anova_table)
+
+#print("test pre retention: ",ttest_ind(df_pre[metric], df_ret[metric]))
+
+#phase and schedule
+
+###
+#t-test 
+# data_ret_trans = pickle.load(open('retention_transfer_xy.pkl', 'rb'))
+
+# data_posttest = pickle.load(open('posttest.pkl', 'rb'))
+# data_pretest = pickle.load(open('pretest.pkl', 'rb'))
+
+# plot_mt_ret_trans(data_ret_trans,"transfer")
+# plot_mt_ret_trans(data_ret_trans,"retention")
+# plot_mt(data_posttest,"posttest")
+# plot_mt(data_pretest,"pretest")
+plot_mean_hist(data_training)
 
 
-# df_new = df_ret_transf[df_ret_transf['phase'] == '1.0-800']
-# df_new['phase'] = 'retention'
+#plot_icf_jerk(results_pre_jerk['jerk'],results_pre_icf['icf'])
+# covariance = np.cov(results_pre_jerk['jerk'], results_pre_icf['icf'])
+# print(covariance)
 
-# df_pre_post_ret = pd.concat([df_pre_post, df_new], axis=0)
-
-# print(ttest_ind(df_pre_post_ret[df_pre_post_ret['phase'] == 'pretest'][metric],df_pre_post_ret[df_pre_post_ret['phase'] == 'retention'][metric]))
-
-data_ret_trans = pickle.load(open('retention_transfer_xy.pkl', 'rb'))
-data_posttest = pickle.load(open('posttest.pkl', 'rb'))
-data_pretest = pickle.load(open('pretest.pkl', 'rb'))
-
-plot_ret_trans_mt(data_ret_trans,"transfer")
-plot_ret_trans_mt(data_ret_trans,"retention")
-plot_pre_post_mt(data_posttest)
-plot_pre_post_mt(data_posttest)
+# cor_pearson,_ = pearsonr(results_pre_jerk['jerk'],results_pre_icf['icf'])
+# print(cor_pearson)
