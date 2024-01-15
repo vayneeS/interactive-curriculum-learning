@@ -15,6 +15,42 @@ import matplotlib.pylab as plt
 from scipy.stats import ttest_ind
 import json
 
+def remove_outliers(data, factors, measure):
+    new_data = {}
+    for k in data.keys():
+        new_data[k] = []
+    if len(factors) == 2:
+        for c in np.unique(data[factors[0]]):
+            for c2 in np.unique(data[factors[1]]):
+                idx1 = np.where(np.array(data[factors[0]]) == c)[0]
+                idx2 = np.where(np.array(data[factors[1]]) == c2)[0]
+                idx = list(set(idx1) & set(idx2))
+                m = np.mean(np.array(data[measure])[idx])
+                s = np.std(np.array(data[measure])[idx])
+                nidx = []
+                for i in idx:
+                    if np.array(data[measure])[i] <= m + 3*s and np.array(data[measure])[i] >= m - 3*s:
+                        nidx.append(i)
+                for k in data.keys():
+                    new_data[k].extend(np.array(data[k])[nidx])
+                print(c, c2, len(nidx), len(idx))
+    elif len(factors) == 1:
+        for c in np.unique(data[factors[0]]):
+            idx = np.where(np.array(data[factors[0]]) == c)[0]
+            m = np.mean(np.array(data[measure])[idx])
+            s = np.std(np.array(data[measure])[idx])
+            nidx = []
+            for i in idx:
+                if np.array(data[measure])[i] <= m + 3*s and np.array(data[measure])[i] >= m - 3*s:
+                    nidx.append(i)
+            for k in data.keys():
+                new_data[k].extend(np.array(data[k])[nidx])
+            if len(nidx)==len(idx):
+                print(c, '- no outlier removed -', len(nidx), len(idx))
+            else:
+                print(c, '- {} outliers removed -'.format(len(idx)-len(nidx)), len(nidx), len(idx))
+    return new_data
+
 def icf(data, width=18, diameter=400):
     data_ = np.sqrt(np.sum(np.power(data - [500, 500], 2), 1))
     outs1 = np.where(data_ > diameter + width/2)[0]
@@ -160,9 +196,9 @@ def pickle_phases(data,filename):
     file = open('./pickles/'+filename,'wb')
     pickle.dump(new_data,file)
 
-def compute_std_jerk(map_algo,map_phases,data_post,data_rettrasnf,bounds=[0., 1.]):
+def compute_std_jerk(map_algo, map_phases, data_post, data_rettrasnf, bounds=[0., 1.]):
     
-    jerk_trials = {'condition':[],'jerk':[],'phase':[]}
+    jerk_trials = {'condition':[], 'jerk':[], 'phase':[]}
     data_post_ret_trans = {}
     data_post_ret_trans['D1-1.0-800-Post'] = data_post
 
@@ -171,17 +207,18 @@ def compute_std_jerk(map_algo,map_phases,data_post,data_rettrasnf,bounds=[0., 1.
             dat = {}
             for p_id in data_rettrasnf.keys():
                 dat[p_id] = {'algo': data_rettrasnf[p_id]['algo'], 'data': {}}
-                bid = 0
+                block_id = 1
                 for b in data_rettrasnf[p_id]['data'][mt][dm].keys():
-                    dat[p_id]['data'][bid] = {}
+                    dat[p_id]['data'][block_id] = {}
                     for t in data_rettrasnf[p_id]['data'][mt][dm][b].keys():
-                        dat[p_id]['data'][bid][t] = data_rettrasnf[p_id]['data'][mt][dm][b][t]
-                    bid += 1
+                        dat[p_id]['data'][block_id][t] = data_rettrasnf[p_id]['data'][mt][dm][b][t]
+                    block_id += 1
             if mt == 1.0 and dm == 800:
                 data_post_ret_trans['D2-{}-{}-Ret'.format(mt, dm)] = dat
             else:
                 data_post_ret_trans['D2-{}-{}-Tsf'.format(mt, dm)] = dat
-    jerk_trials = {'phase':[],'condition':[],'jerk':[]}
+    
+    jerk_trials = {'phase':[], 'condition':[], 'jerk':[]}
     for k in data_post_ret_trans.keys(): 
         # print(k)
         # data_ = pickle.load(open(os.path.join(pickle_folder, '{}_xy.pkl'.format(k)), 'rb'))
@@ -195,34 +232,31 @@ def compute_std_jerk(map_algo,map_phases,data_post,data_rettrasnf,bounds=[0., 1.
                     if '{}_{}_{}_{}'.format(k, p_id, b, t) != 'D1-1.0-800-Pre_P1-MAB_1_1':
                         xy = data_[p_id]['data'][b][t]
                         b1 = int(bounds[0] * len(xy))
-
                         b2 = int(bounds[1] * len(xy))
                         xy = xy[b1:b2, :]
-                        
-                        if jerk(xy) < 1200:
-                            jerk_trial = jerk(xy)
-
-                        jerk_trials['jerk'].append(np.mean(jerk_trial))
+                        jerk_trials['jerk'].append(np.mean(jerk(xy)))
                         jerk_trials['condition'].append(map_algo[data_[p_id]['algo']])
                         jerk_trials['phase'].append(map_phases[k])
    
-    #removing outliers of jerk data for each phase and condition
-    filtered_jerk = {'phase':[],'jerk':[],'condition':[]}
-    for phase in np.unique(jerk_trials['phase']):
-        for cond in np.unique(jerk_trials['condition']):
-            idx1 = np.where(np.array(jerk_trials['condition']) == cond)[0]
-            idx2 = np.where(np.array(jerk_trials['phase']) == phase)[0]
-            idx = list(set(idx1) & set(idx2))
+    # #removing outliers of jerk data for each phase and condition
+    # filtered_jerk = {'phase':[],'jerk':[],'condition':[]}
+    # for phase in np.unique(jerk_trials['phase']):
+    #     for cond in np.unique(jerk_trials['condition']):
+    #         idx1 = np.where(np.array(jerk_trials['condition']) == cond)[0]
+    #         idx2 = np.where(np.array(jerk_trials['phase']) == phase)[0]
+    #         idx = list(set(idx1) & set(idx2))
             
-            sel_data = np.array(jerk_trials['jerk'])[idx]
-            mean_distrib = np.mean(np.array(jerk_trials['jerk'])[idx])
-            outlier_thresh = mean_distrib + 3 * np.std(np.array(jerk_trials['jerk'])[idx])
-            idx_no_outliers = np.where(sel_data < outlier_thresh)[0]
-            for i in idx_no_outliers:
+    #         sel_data = np.array(jerk_trials['jerk'])[idx]
+    #         mean_distrib = np.mean(np.array(jerk_trials['jerk'])[idx])
+    #         outlier_thresh = mean_distrib + 3 * np.std(np.array(jerk_trials['jerk'])[idx])
+    #         idx_no_outliers = np.where(sel_data < outlier_thresh)[0]
+    #         for i in idx_no_outliers:
   
-                filtered_jerk['phase'].append(phase)
-                filtered_jerk['condition'].append(cond)
-                filtered_jerk['jerk'].append(sel_data[i])
+    #             filtered_jerk['phase'].append(phase)
+    #             filtered_jerk['condition'].append(cond)
+    #             filtered_jerk['jerk'].append(sel_data[i])
+
+    filtered_jerk = remove_outliers(data=jerk_trials, factors=['condition'], measure='jerk')
 
     std_per_block = {'condition':[],'phase':[],'std':[]}
     for phase in np.unique(filtered_jerk['phase']):
@@ -236,23 +270,24 @@ def compute_std_jerk(map_algo,map_phases,data_post,data_rettrasnf,bounds=[0., 1.
             std_per_block['phase'].append(phase)
 
     df = pd.DataFrame(std_per_block)
+    df.to_csv('jerk_std.csv')
     return df     
 
 def plot_std_jerk(df):
     order = ['Error Adaptation','Curriculum Learning','Random']
     ax = sns.barplot(
-    x='condition',
-    y='std',
-    hue_order = ['Error Adaptation','Curriculum Learning','Random'],
-    hue='condition',
-    data=df,
-    palette="Set2",
-    ci="sd", 
-    edgecolor="black",
-    errcolor="black",
-    errwidth=1.5,
-    capsize = 0.1,
-    order=order)
+        x='condition',
+        y='std',
+        hue_order = ['Error Adaptation','Curriculum Learning','Random'],
+        hue='condition',
+        data=df,
+        palette="Set2",
+        errorbar="sd", 
+        edgecolor="black",
+        errcolor="black",
+        err_kws={'linewidth': 1.5},
+        capsize = 0.1,
+        order=order)
     ax.legend_.remove()
     ax.tick_params(axis='x', rotation=25)
     ax.set(xlabel=None)
@@ -264,20 +299,51 @@ def plot_std_jerk(df):
     plt.savefig('jerk_std_plot.pdf')
     plt.show()  
 
+def create_figure3(df):
+    order = ['Error Adaptation', 'Curriculum Learning', 'Random']
+    print(df)
+    ax = sns.barplot(
+        x='condition',
+        y='std',
+        hue_order=order,
+        hue='condition',
+        data=df,
+        palette="Set2",
+        errorbar="sd", 
+        edgecolor="black",
+        # errcolor="black",
+        err_kws={'linewidth': 1.5, 'color': 'black'},
+        capsize=0.1,
+        order=order)
+    # ax.legend_.remove()
+    ax.tick_params(axis='x', rotation=25)
+    ax.set(xlabel=None)
+    plt.ylabel('JERK standard deviation', fontsize=17)
+    # plt.setp(ax.get_legend().get_texts(), fontsize='17') # for legend text
+    # plt.setp(ax.get_legend().get_title(), fontsize='17')
+    plt.tick_params(axis='both', which='major', labelsize=17)
+    plt.tight_layout()
+    plt.savefig('jerk_std_plot.pdf')
+    plt.show()  
+
+
 if __name__ == "__main__":
-    pickle_folder = './pickles'
-    map_algo = {'choilike':'Error Adaptation','mabuni':'Curriculum Learning','scheduled':'Random'}
-    map_phases = {'D1-1.0-800-Pre':'Pre-test', 
-            'D1-1.0-800-Post':'Post-test', 
-            'D2-1.0-800-Ret':'Retention', 
-            'D2-1.0-600-Tsf':'Transfer-1', 
-            'D2-1.0-400-Tsf':'Transfer-2', 
-            'D2-0.7-800-Tsf':'Transfer-3',
-            'D2-0.7-600-Tsf':'Transfer-4',
-            'D2-0.7-400-Tsf':'Transfer-5'}
+    pickle_folder = '../pickles'
+    map_algo = {'choilike' : 'Error Adaptation',
+                'mabuni' : 'Curriculum Learning',
+                'scheduled' : 'Random'}
+    map_phases = {'D1-1.0-800-Pre' : 'Pre-test', 
+                  'D1-1.0-800-Post' : 'Post-test', 
+                  'D2-1.0-800-Ret' : 'Retention', 
+                  'D2-1.0-600-Tsf' : 'Transfer-1', 
+                  'D2-1.0-400-Tsf' : 'Transfer-2', 
+                  'D2-0.7-800-Tsf' : 'Transfer-3',
+                  'D2-0.7-600-Tsf' : 'Transfer-4',
+                  'D2-0.7-400-Tsf' : 'Transfer-5'}
     
     data_pre = pickle.load(open(os.path.join(pickle_folder, 'pretest_xy.pkl'), 'rb'))
     data_post = pickle.load(open(os.path.join(pickle_folder, 'posttest_xy.pkl'), 'rb'))
     data_rettrasnf = pickle.load(open(os.path.join(pickle_folder, 'retention_transfer_xy.pkl'), 'rb'))
-    df_jerk_var = compute_std_jerk(map_algo,map_phases,data_post,data_rettrasnf)
-    plot_std_jerk(df_jerk_var)
+    df_jerk_var = compute_std_jerk(map_algo, map_phases, data_post, data_rettrasnf)
+    # plot_std_jerk(df_jerk_var)
+    create_figure3(df_jerk_var)
